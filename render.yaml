@@ -1,0 +1,23 @@
+databases:
+  - name: transcript-intel-db
+    plan: free
+    databaseName: transcript_intel
+    user: transcript_user
+
+services:
+  - type: web
+    name: transcript-intelligence
+    runtime: node
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    envVars:
+      - key: GROQ_API_KEY
+        sync: false
+      - key: DATABASE_URL
+        fromDatabase:
+          name: transcript-intel-db
+          property: connectionString
+      - key: NODE_ENV
+        value: production
+    plan: free
+    healthCheckPath: /api/health
