@@ -307,11 +307,21 @@ Sales Rep: Absolutely. The industry classification module uses multi-source inte
 Mark: Alright, send over the proposal. I'll loop in our CTO and CCO for a technical review next week. If the pilot goes well, we'd want to expand to the Clear report module too. Budget shouldn't be an issue if we can prove the ROI — our board has been pushing us to automate for the last year.`;
 
 /* ─── HELPER COMPONENTS ─── */
-const SeverityTag = ({ level }) => (
-  <span className={`tag tag-${level}`}>
-    {level === 'high' ? '▲' : level === 'medium' ? '◆' : '▽'} {level}
-  </span>
-);
+const SeverityTag = ({ level, large }) => {
+  const styles = large ? {
+    padding: '6px 14px', fontSize: 13, fontWeight: 700, borderRadius: 8,
+    letterSpacing: '0.5px', textTransform: 'uppercase',
+  } : {};
+  return (
+    <span className={`tag tag-${level}`} style={styles}>
+      {level === 'high' ? '▲' : level === 'medium' ? '◆' : '▽'} {level}
+    </span>
+  );
+};
+
+const severityOrder = { high: 0, medium: 1, low: 2, mentioned: 3 };
+const sortBySeverity = (items, key = 'severity') =>
+  [...items].sort((a, b) => (severityOrder[a[key]] ?? 3) - (severityOrder[b[key]] ?? 3));
 
 const BarChart = ({ items, maxVal, color = 'var(--accent)' }) => (
   <div>
@@ -344,6 +354,10 @@ export default function App() {
   const [uploadingFile, setUploadingFile] = useState(false);
   const [fileName, setFileName] = useState('');
   const fileInputRef = React.useRef(null);
+  const [summaryExpanded, setSummaryExpanded] = useState(false);
+  const [objectionsOpen, setObjectionsOpen] = useState(false);
+  const [opportunitiesOpen, setOpportunitiesOpen] = useState(false);
+  const [themesExpanded, setThemesExpanded] = useState(false);
 
   useEffect(() => { injectStyles(); }, []);
 
@@ -383,7 +397,8 @@ export default function App() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
       setSelected(data.analysis);
-      setTranscript(''); setTitle('');
+      setTranscript(''); setTitle(''); setFileName('');
+      setSummaryExpanded(false); setObjectionsOpen(false); setOpportunitiesOpen(false); setThemesExpanded(false);
       setView('detail');
       fetchAnalyses();
       fetchAggregate();
@@ -560,7 +575,7 @@ export default function App() {
         <div style={{ marginTop: 32 }}>
           <h3 className="section-title">Previous Analyses</h3>
           {analyses.map(a => (
-            <div key={a.id} className="transcript-item" onClick={() => { setSelected(a); setView('detail'); }}>
+            <div key={a.id} className="transcript-item" onClick={() => { setSelected(a); setView('detail'); setSummaryExpanded(false); setObjectionsOpen(false); setOpportunitiesOpen(false); setThemesExpanded(false); }}>
               <div>
                 <div className="transcript-title">{a.title || 'Untitled'}</div>
                 <div className="transcript-meta">
@@ -596,10 +611,22 @@ export default function App() {
 
         {/* Summary & Deal Signals */}
         <div className="grid-2" style={{ marginBottom: 20 }}>
-          <div className="card">
-            <div className="card-header"><span className="card-title">Summary</span></div>
-            <p style={{ fontSize: 14, color: 'var(--text2)', lineHeight: 1.6 }}>{a.summary}</p>
-            {a.prospect && (
+          <div className="card" style={{ overflow: 'hidden' }}>
+            <div className="card-header" style={{ cursor: 'pointer' }} onClick={() => setSummaryExpanded(!summaryExpanded)}>
+              <span className="card-title">Summary</span>
+              <span style={{ fontSize: 18, color: 'var(--text3)', transition: 'transform 0.2s', transform: summaryExpanded ? 'rotate(180deg)' : 'rotate(0deg)' }}>▾</span>
+            </div>
+            <p style={{
+              fontSize: 14, color: 'var(--text2)', lineHeight: 1.6,
+              maxHeight: summaryExpanded ? '1000px' : '60px',
+              overflow: 'hidden', transition: 'max-height 0.3s ease',
+            }}>
+              {a.summary}
+            </p>
+            {!summaryExpanded && a.summary?.length > 150 && (
+              <div style={{ background: 'linear-gradient(transparent, var(--surface))', height: 24, marginTop: -24, position: 'relative' }} />
+            )}
+            {a.prospect && summaryExpanded && (
               <div style={{ marginTop: 12, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                 {a.prospect.name && <span className="tag tag-accent">{a.prospect.name}</span>}
                 {a.prospect.role && <span className="tag tag-blue">{a.prospect.role}</span>}
@@ -636,73 +663,110 @@ export default function App() {
           </div>
         </div>
 
-        {/* Stats row */}
-        <div className="grid-4" style={{ marginBottom: 20 }}>
-          <div className="stat-card">
-            <div className="stat-label">Objections</div>
-            <div className="stat-value" style={{ color: 'var(--red)' }}>{(a.objections || []).length}</div>
+        {/* Objections & Opportunities — Clickable Cards */}
+        <div className="grid-2" style={{ marginBottom: 20 }}>
+          <div className="card" style={{ cursor: 'pointer', transition: 'border-color 0.2s' }}
+            onClick={() => (a.objections || []).length > 0 && setObjectionsOpen(true)}
+            onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--red)'}
+            onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border)'}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <div style={{ fontSize: 32, fontWeight: 800, color: 'var(--red)', fontFamily: 'var(--mono)' }}>{(a.objections || []).length}</div>
+              <div>
+                <div style={{ fontSize: 15, fontWeight: 600 }}>Objections Flagged</div>
+                <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 2 }}>
+                  {(a.objections || []).length > 0 ? (
+                    <>
+                      {sortBySeverity(a.objections).filter(o => o.severity === 'high').length} high · {sortBySeverity(a.objections).filter(o => o.severity === 'medium').length} medium · {sortBySeverity(a.objections).filter(o => o.severity === 'low').length} low
+                    </>
+                  ) : 'No objections detected'}
+                </div>
+              </div>
+              {(a.objections || []).length > 0 && (
+                <div style={{ marginLeft: 'auto', fontSize: 13, color: 'var(--text3)' }}>Click to expand →</div>
+              )}
+            </div>
           </div>
-          <div className="stat-card">
-            <div className="stat-label">Opportunities</div>
-            <div className="stat-value" style={{ color: 'var(--green)' }}>{(a.opportunities || []).length}</div>
-          </div>
-          <div className="stat-card">
-            <div className="stat-label">Modules Discussed</div>
-            <div className="stat-value" style={{ color: 'var(--blue)' }}>{(a.modules_discussed || []).length}</div>
-          </div>
-          <div className="stat-card">
-            <div className="stat-label">Key Phrases</div>
-            <div className="stat-value" style={{ color: 'var(--amber)' }}>{(a.key_phrases || []).length}</div>
+
+          <div className="card" style={{ cursor: 'pointer', transition: 'border-color 0.2s' }}
+            onClick={() => (a.opportunities || []).length > 0 && setOpportunitiesOpen(true)}
+            onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--green)'}
+            onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border)'}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <div style={{ fontSize: 32, fontWeight: 800, color: 'var(--green)', fontFamily: 'var(--mono)' }}>{(a.opportunities || []).length}</div>
+              <div>
+                <div style={{ fontSize: 15, fontWeight: 600 }}>Opportunities Identified</div>
+                <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 2 }}>
+                  {(a.opportunities || []).length > 0 ? (
+                    <>
+                      {sortBySeverity(a.opportunities, 'strength').filter(o => o.strength === 'high').length} high · {sortBySeverity(a.opportunities, 'strength').filter(o => o.strength === 'medium').length} medium · {sortBySeverity(a.opportunities, 'strength').filter(o => o.strength === 'low').length} low
+                    </>
+                  ) : 'No opportunities detected'}
+                </div>
+              </div>
+              {(a.opportunities || []).length > 0 && (
+                <div style={{ marginLeft: 'auto', fontSize: 13, color: 'var(--text3)' }}>Click to expand →</div>
+              )}
+            </div>
           </div>
         </div>
 
-        {/* Objections */}
-        <div className="grid-2">
-          <div>
-            <h3 className="section-title" style={{ fontSize: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span style={{ color: 'var(--red)' }}>◼</span> Objections Flagged
-            </h3>
-            {(a.objections || []).length === 0 ? <p style={{ color: 'var(--text3)', fontSize: 13 }}>No objections detected</p> :
-              a.objections.map((obj, i) => (
-                <div key={i} className="insight-item">
+        {/* Objections Modal */}
+        {objectionsOpen && (
+          <div className="modal-overlay" onClick={() => setObjectionsOpen(false)}>
+            <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 700 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <span style={{ color: 'var(--red)', fontSize: 20 }}>◼</span>
+                  <span style={{ fontSize: 18, fontWeight: 700 }}>Objections Flagged ({(a.objections || []).length})</span>
+                </div>
+                <button className="btn btn-ghost btn-sm" onClick={() => setObjectionsOpen(false)}>✕ Close</button>
+              </div>
+              {sortBySeverity(a.objections || []).map((obj, i) => (
+                <div key={i} className="insight-item" style={{ borderLeft: `4px solid ${obj.severity === 'high' ? 'var(--red)' : obj.severity === 'medium' ? 'var(--amber)' : 'var(--green)'}` }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <div className="insight-category">{obj.category}</div>
-                    <SeverityTag level={obj.severity} />
+                    <SeverityTag level={obj.severity} large />
                   </div>
-                  <div className="insight-detail">{obj.detail}</div>
+                  <div className="insight-detail" style={{ marginTop: 6 }}>{obj.detail}</div>
                   {obj.quote && <div className="insight-quote">"{obj.quote}"</div>}
                   {obj.suggested_response && (
-                    <div style={{ marginTop: 8, padding: '8px 12px', background: 'var(--green-bg)', borderRadius: 6, fontSize: 12, color: 'var(--green)' }}>
+                    <div style={{ marginTop: 10, padding: '10px 14px', background: 'var(--green-bg)', borderRadius: 8, fontSize: 13, color: 'var(--green)' }}>
                       💡 <strong>Counter:</strong> {obj.suggested_response}
                     </div>
                   )}
                 </div>
-              ))
-            }
+              ))}
+            </div>
           </div>
+        )}
 
-          {/* Opportunities */}
-          <div>
-            <h3 className="section-title" style={{ fontSize: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span style={{ color: 'var(--green)' }}>◼</span> Opportunities Identified
-            </h3>
-            {(a.opportunities || []).length === 0 ? <p style={{ color: 'var(--text3)', fontSize: 13 }}>No opportunities detected</p> :
-              a.opportunities.map((opp, i) => (
-                <div key={i} className="insight-item">
+        {/* Opportunities Modal */}
+        {opportunitiesOpen && (
+          <div className="modal-overlay" onClick={() => setOpportunitiesOpen(false)}>
+            <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 700 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <span style={{ color: 'var(--green)', fontSize: 20 }}>◼</span>
+                  <span style={{ fontSize: 18, fontWeight: 700 }}>Opportunities Identified ({(a.opportunities || []).length})</span>
+                </div>
+                <button className="btn btn-ghost btn-sm" onClick={() => setOpportunitiesOpen(false)}>✕ Close</button>
+              </div>
+              {sortBySeverity(a.opportunities || [], 'strength').map((opp, i) => (
+                <div key={i} className="insight-item" style={{ borderLeft: `4px solid ${opp.strength === 'high' ? 'var(--green)' : opp.strength === 'medium' ? 'var(--amber)' : 'var(--text3)'}` }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <div className="insight-category">{opp.category}</div>
-                    <SeverityTag level={opp.strength} />
+                    <SeverityTag level={opp.strength} large />
                   </div>
-                  <div className="insight-detail">{opp.detail}</div>
+                  <div className="insight-detail" style={{ marginTop: 6 }}>{opp.detail}</div>
                   {opp.quote && <div className="insight-quote">"{opp.quote}"</div>}
-                  <div className="insight-meta">
+                  <div className="insight-meta" style={{ marginTop: 8 }}>
                     {(opp.modules_relevant || []).map((m, j) => <span key={j} className="tag tag-accent">{m}</span>)}
                   </div>
                 </div>
-              ))
-            }
+              ))}
+            </div>
           </div>
-        </div>
+        )}
 
         {/* Modules Interest */}
         {(a.modules_discussed || []).length > 0 && (
@@ -720,18 +784,36 @@ export default function App() {
           </div>
         )}
 
-        {/* Messaging Themes */}
+        {/* Messaging Themes — Expandable */}
         {(a.messaging_themes || []).length > 0 && (
           <div className="card" style={{ marginTop: 20 }}>
-            <div className="card-header"><span className="card-title">Messaging Themes</span></div>
-            {a.messaging_themes.map((t, i) => (
-              <div key={i} style={{ padding: 14, background: 'var(--surface2)', borderRadius: 8, marginBottom: 10, borderLeft: `3px solid ${t.priority === 'high' ? 'var(--accent)' : t.priority === 'medium' ? 'var(--amber)' : 'var(--text3)'}` }}>
+            <div className="card-header" style={{ cursor: 'pointer' }} onClick={() => setThemesExpanded(!themesExpanded)}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <span className="card-title">Messaging Themes</span>
+                <span className="tag tag-accent" style={{ fontSize: 11 }}>{(a.messaging_themes || []).length}</span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                {!themesExpanded && (
+                  <span style={{ fontSize: 12, color: 'var(--text3)' }}>Click to expand</span>
+                )}
+                <span style={{ fontSize: 18, color: 'var(--text3)', transition: 'transform 0.2s', transform: themesExpanded ? 'rotate(180deg)' : 'rotate(0deg)' }}>▾</span>
+              </div>
+            </div>
+            {/* Always show top theme as preview */}
+            {!themesExpanded && sortBySeverity(a.messaging_themes, 'priority').slice(0, 1).map((t, i) => (
+              <div key={i} style={{ padding: 12, background: 'var(--surface2)', borderRadius: 8, borderLeft: '3px solid var(--accent)', fontSize: 13, color: 'var(--text2)' }}>
+                <span style={{ fontWeight: 600, color: 'var(--text)' }}>{t.theme}</span> — {t.rationale?.substring(0, 80)}{t.rationale?.length > 80 ? '...' : ''}
+              </div>
+            ))}
+            {/* Expanded: show all sorted */}
+            {themesExpanded && sortBySeverity(a.messaging_themes, 'priority').map((t, i) => (
+              <div key={i} style={{ padding: 14, background: 'var(--surface2)', borderRadius: 8, marginBottom: 10, borderLeft: `4px solid ${t.priority === 'high' ? 'var(--accent)' : t.priority === 'medium' ? 'var(--amber)' : 'var(--text3)'}` }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <div style={{ fontSize: 14, fontWeight: 600 }}>{t.theme}</div>
-                  <SeverityTag level={t.priority} />
+                  <SeverityTag level={t.priority} large />
                 </div>
-                <div style={{ fontSize: 13, color: 'var(--text2)', marginTop: 4 }}>{t.rationale}</div>
-                {t.target_emotion && <span className="tag tag-pink" style={{ marginTop: 6 }}>→ {t.target_emotion}</span>}
+                <div style={{ fontSize: 13, color: 'var(--text2)', marginTop: 6, lineHeight: 1.5 }}>{t.rationale}</div>
+                {t.target_emotion && <span className="tag tag-pink" style={{ marginTop: 8, display: 'inline-block' }}>→ {t.target_emotion}</span>}
               </div>
             ))}
           </div>
