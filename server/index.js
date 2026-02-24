@@ -1,14 +1,31 @@
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
+const fs = require('fs');
 const { v4: uuidv4 } = require('uuid');
 const Groq = require('groq-sdk');
+const multer = require('multer');
 const { pool, initDB } = require('./db');
 require('dotenv').config();
 
 const app = express();
 app.use(cors());
-app.use(express.json({ limit: '5mb' }));
+app.use(express.json({ limit: '10mb' }));
+
+// File upload config
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB max
+  fileFilter: (req, file, cb) => {
+    const allowed = ['.txt', '.csv', '.md', '.text', '.log', '.vtt', '.srt'];
+    const ext = path.extname(file.originalname).toLowerCase();
+    if (allowed.includes(ext) || file.mimetype.startsWith('text/')) {
+      cb(null, true);
+    } else {
+      cb(new Error(`Unsupported file type: ${ext}. Use .txt, .csv, .md, .vtt, or .srt`));
+    }
+  }
+});
 
 // Serve static frontend
 app.use(express.static(path.join(__dirname, '..', 'client', 'build')));
@@ -110,15 +127,128 @@ TRANSCRIPT:
 `;
 
 // Helper to call Groq
-async function callLLM(prompt) {
-  const completion = await groq.chat.completions.create({
+async function callLLM(prompt, jsonMode = true) {
+  const options = {
     messages: [{ role: 'user', content: prompt }],
     model: 'llama-3.3-70b-versatile',
     temperature: 0.3,
     max_tokens: 4096,
-    response_format: { type: 'json_object' },
-  });
+  };
+  if (jsonMode) options.response_format = { type: 'json_object' };
+  const completion = await groq.chat.completions.create(options);
   return completion.choices[0].message.content;
+}
+
+// ─── CHUNKING LOGIC ───
+// Groq free tier has a ~6000 token context window budget for input after the prompt.
+// We split large transcripts into chunks and merge results.
+
+function splitTranscript(text, maxChars = 12000) {
+  if (text.length <= maxChars) return [text];
+
+  const chunks = [];
+  const lines = text.split('\n');
+  let current = '';
+
+  for (const line of lines) {
+    if (current.length + line.length + 1 > maxChars && current.length > 0) {
+      chunks.push(current.trim());
+      current = '';
+    }
+    current += line + '\n';
+  }
+  if (current.trim()) chunks.push(current.trim());
+  return chunks;
+}
+
+function mergeAnalyses(results) {
+  if (results.length === 1) return results[0];
+
+  const merged = {
+    summary: results.map(r => r.summary).filter(Boolean).join(' '),
+    prospect: results[0].prospect || {},
+    key_phrases: [],
+    objections: [],
+    opportunities: [],
+    modules_discussed: [],
+    messaging_themes: [],
+    marketing_suggestions: [],
+    next_steps: [],
+    deal_signals: results[results.length - 1].deal_signals || results[0].deal_signals || null,
+  };
+
+  // Fill prospect from first chunk that has data
+  for (const r of results) {
+    if (r.prospect?.name && !merged.prospect.name) merged.prospect = { ...merged.prospect, ...r.prospect };
+  }
+
+  // Concatenate arrays, dedup by detail/phrase/theme text
+  const seen = new Set();
+  for (const r of results) {
+    for (const kp of (r.key_phrases || [])) {
+      const key = kp.phrase?.toLowerCase();
+      if (key && !seen.has(key)) { seen.add(key); merged.key_phrases.push(kp); }
+    }
+    for (const obj of (r.objections || [])) {
+      const key = obj.detail?.toLowerCase();
+      if (key && !seen.has(key)) { seen.add(key); merged.objections.push(obj); }
+    }
+    for (const opp of (r.opportunities || [])) {
+      const key = opp.detail?.toLowerCase();
+      if (key && !seen.has(key)) { seen.add(key); merged.opportunities.push(opp); }
+    }
+    for (const mod of (r.modules_discussed || [])) {
+      const key = mod.module?.toLowerCase();
+      if (key && !seen.has(key)) { seen.add(key); merged.modules_discussed.push(mod); }
+    }
+    for (const t of (r.messaging_themes || [])) {
+      const key = t.theme?.toLowerCase()?.substring(0, 40);
+      if (key && !seen.has(key)) { seen.add(key); merged.messaging_themes.push(t); }
+    }
+    for (const s of (r.marketing_suggestions || [])) {
+      const key = s.title?.toLowerCase();
+      if (key && !seen.has(key)) { seen.add(key); merged.marketing_suggestions.push(s); }
+    }
+    for (const step of (r.next_steps || [])) {
+      const key = step?.toLowerCase()?.substring(0, 40);
+      if (key && !seen.has(key)) { seen.add(key); merged.next_steps.push(step); }
+    }
+  }
+
+  return merged;
+}
+
+async function analyzeTranscript(transcript) {
+  const chunks = splitTranscript(transcript);
+  console.log(`Processing transcript: ${transcript.length} chars, ${chunks.length} chunk(s)`);
+
+  const results = [];
+  for (let i = 0; i < chunks.length; i++) {
+    const chunkNote = chunks.length > 1
+      ? `\n\n[NOTE: This is part ${i + 1} of ${chunks.length} of a long transcript. Analyze this section thoroughly.]\n\n`
+      : '';
+    const responseText = await callLLM(ANALYSIS_PROMPT + chunkNote + chunks[i]);
+
+    let parsed;
+    try {
+      const cleaned = responseText.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
+      const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+      parsed = JSON.parse(jsonMatch ? jsonMatch[0] : cleaned);
+    } catch (parseErr) {
+      console.error(`Chunk ${i + 1} parse error:`, parseErr);
+      console.error('Raw:', responseText.substring(0, 300));
+      continue; // skip failed chunks
+    }
+    results.push(parsed);
+
+    // Rate limit pause between chunks (Groq free: 30 RPM)
+    if (i < chunks.length - 1) {
+      await new Promise(resolve => setTimeout(resolve, 2500));
+    }
+  }
+
+  if (results.length === 0) throw new Error('All chunks failed to parse. Try a shorter transcript.');
+  return mergeAnalyses(results);
 }
 
 // ─── ROUTES ───
@@ -133,7 +263,47 @@ app.get('/api/health', async (req, res) => {
   }
 });
 
-// Analyze a transcript
+// File upload endpoint
+app.post('/api/upload', upload.single('file'), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+
+    let text = req.file.buffer.toString('utf-8');
+
+    // Clean up CSV format: if it looks like CSV with columns, extract text column
+    if (req.file.originalname.endsWith('.csv')) {
+      const lines = text.split('\n');
+      // If first line looks like headers, try to extract conversation text
+      if (lines.length > 1 && lines[0].includes(',')) {
+        const headers = lines[0].toLowerCase();
+        // Common transcript CSV patterns: just join non-header lines
+        text = lines.slice(1).join('\n');
+      }
+    }
+
+    // Clean up VTT/SRT subtitle formats
+    if (req.file.originalname.endsWith('.vtt') || req.file.originalname.endsWith('.srt')) {
+      text = text
+        .replace(/^WEBVTT.*$/m, '')
+        .replace(/^\d+$/gm, '')
+        .replace(/\d{2}:\d{2}:\d{2}[.,]\d{3}\s*-->\s*\d{2}:\d{2}:\d{2}[.,]\d{3}/g, '')
+        .replace(/\n{3,}/g, '\n\n')
+        .trim();
+    }
+
+    res.json({
+      text: text.trim(),
+      filename: req.file.originalname,
+      size: req.file.size,
+      characters: text.trim().length,
+    });
+  } catch (err) {
+    console.error('Upload error:', err);
+    res.status(500).json({ error: err.message || 'File upload failed' });
+  }
+});
+
+// Analyze a transcript (now with chunking)
 app.post('/api/analyze', async (req, res) => {
   const client = await pool.connect();
   try {
@@ -152,21 +322,8 @@ app.post('/api/analyze', async (req, res) => {
       [id, finalTitle, transcript, source]
     );
 
-    // Call Groq API for analysis
-    const responseText = await callLLM(ANALYSIS_PROMPT + transcript);
-
-    // Parse JSON
-    let analysis;
-    try {
-      const cleaned = responseText.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
-      const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
-      analysis = JSON.parse(jsonMatch ? jsonMatch[0] : cleaned);
-    } catch (parseErr) {
-      console.error('JSON parse error:', parseErr);
-      console.error('Raw response:', responseText.substring(0, 500));
-      await client.query(`UPDATE transcripts SET status = 'failed' WHERE id = $1`, [id]);
-      return res.status(500).json({ error: 'Failed to parse analysis. Please try again.' });
-    }
+    // Analyze with chunking support
+    const analysis = await analyzeTranscript(transcript);
 
     // Insert analysis
     await client.query(

@@ -341,6 +341,9 @@ export default function App() {
   const [modal, setModal] = useState(null);
   const [collateralLoading, setCollateralLoading] = useState(false);
   const [error, setError] = useState('');
+  const [uploadingFile, setUploadingFile] = useState(false);
+  const [fileName, setFileName] = useState('');
+  const fileInputRef = React.useRef(null);
 
   useEffect(() => { injectStyles(); }, []);
 
@@ -414,13 +417,60 @@ export default function App() {
   const loadSample = () => {
     setTranscript(SAMPLE_TRANSCRIPT);
     setTitle('Apex Funding — VP Ops Discovery Call');
+    setFileName('');
+  };
+
+  const handleFileUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const allowed = ['.txt', '.csv', '.md', '.text', '.log', '.vtt', '.srt'];
+    const ext = '.' + file.name.split('.').pop().toLowerCase();
+    if (!allowed.includes(ext)) {
+      setError(`Unsupported file type: ${ext}. Use .txt, .csv, .md, .vtt, or .srt`);
+      return;
+    }
+
+    setUploadingFile(true); setError('');
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+
+      const res = await fetch(`${API}/api/upload`, { method: 'POST', body: formData });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+
+      setTranscript(data.text);
+      setFileName(data.filename);
+      if (!title) setTitle(data.filename.replace(/\.[^.]+$/, '').replace(/[-_]/g, ' '));
+    } catch (e) {
+      setError(e.message || 'File upload failed');
+    } finally {
+      setUploadingFile(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
+  const handleDrop = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const file = e.dataTransfer?.files?.[0];
+    if (file) {
+      // Create a synthetic event to reuse handleFileUpload
+      const dt = new DataTransfer();
+      dt.items.add(file);
+      if (fileInputRef.current) {
+        fileInputRef.current.files = dt.files;
+        handleFileUpload({ target: { files: dt.files } });
+      }
+    }
   };
 
   /* ─── RENDER: UPLOAD VIEW ─── */
   const renderUpload = () => (
     <div className="fade-in">
       <h2 className="section-title">Analyze a Transcript</h2>
-      <p className="section-sub">Paste any sales call transcript — Oliv AI, Gong, Chorus, Fireflies, or plain text</p>
+      <p className="section-sub">Upload a file or paste any sales call transcript — Oliv AI, Gong, Chorus, Fireflies, or plain text</p>
 
       <div className="card">
         <div style={{ marginBottom: 16 }}>
@@ -428,26 +478,81 @@ export default function App() {
           <input className="input" placeholder="e.g., Apex Funding — Discovery Call" value={title} onChange={e => setTitle(e.target.value)} />
         </div>
 
+        {/* File Upload Zone */}
+        <div style={{ marginBottom: 16 }}>
+          <label style={{ fontSize: 13, fontWeight: 500, display: 'block', marginBottom: 6 }}>Upload Transcript File</label>
+          <div
+            onDragOver={e => { e.preventDefault(); e.currentTarget.style.borderColor = 'var(--accent)'; e.currentTarget.style.background = 'var(--accent-glow)'; }}
+            onDragLeave={e => { e.preventDefault(); e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.background = 'var(--surface2)'; }}
+            onDrop={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.background = 'var(--surface2)'; handleDrop(e); }}
+            onClick={() => fileInputRef.current?.click()}
+            style={{
+              border: '2px dashed var(--border)', borderRadius: 'var(--radius)',
+              padding: '24px 16px', textAlign: 'center', cursor: 'pointer',
+              background: 'var(--surface2)', transition: 'all 0.2s',
+            }}
+          >
+            <input ref={fileInputRef} type="file" accept=".txt,.csv,.md,.text,.log,.vtt,.srt" onChange={handleFileUpload} style={{ display: 'none' }} />
+            {uploadingFile ? (
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+                <span className="spinner" style={{ width: 16, height: 16 }}/> Processing file...
+              </div>
+            ) : fileName ? (
+              <div>
+                <div style={{ fontSize: 14, fontWeight: 500, color: 'var(--green)' }}>✓ {fileName}</div>
+                <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 4 }}>
+                  {transcript.length.toLocaleString()} characters loaded · Click or drop another file to replace
+                </div>
+              </div>
+            ) : (
+              <div>
+                <div style={{ fontSize: 24, marginBottom: 8, opacity: 0.5 }}>📄</div>
+                <div style={{ fontSize: 14, color: 'var(--text2)' }}>
+                  Drop a file here or <span style={{ color: 'var(--accent)', fontWeight: 500 }}>click to browse</span>
+                </div>
+                <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 4 }}>
+                  Supports .txt, .csv, .md, .vtt, .srt — up to 10MB
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Divider */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, margin: '8px 0 16px' }}>
+          <div style={{ flex: 1, height: 1, background: 'var(--border)' }} />
+          <span style={{ fontSize: 12, color: 'var(--text3)', fontWeight: 500 }}>OR PASTE BELOW</span>
+          <div style={{ flex: 1, height: 1, background: 'var(--border)' }} />
+        </div>
+
         <div style={{ marginBottom: 16 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
             <label style={{ fontSize: 13, fontWeight: 500 }}>Transcript Content</label>
             <button className="btn btn-ghost btn-sm" onClick={loadSample}>Load sample transcript</button>
           </div>
-          <textarea className="textarea" style={{ minHeight: 300 }}
-            placeholder={`Paste your sales call transcript here...\n\nSupported formats:\n• Oliv AI transcripts\n• Gong / Chorus exports\n• Fireflies.ai transcripts\n• Any speaker-labeled text\n• Raw meeting notes`}
-            value={transcript} onChange={e => setTranscript(e.target.value)}
+          <textarea className="textarea" style={{ minHeight: 200 }}
+            placeholder={`Paste your sales call transcript here...`}
+            value={transcript} onChange={e => { setTranscript(e.target.value); if (fileName) setFileName(''); }}
           />
           <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 8 }}>
             <span style={{ fontSize: 12, color: 'var(--text3)' }}>
               {transcript.length > 0 ? `${transcript.length.toLocaleString()} characters` : ''}
+              {transcript.length > 12000 ? ' · Will be processed in chunks' : ''}
             </span>
+            {transcript.length > 0 && (
+              <button className="btn btn-ghost btn-sm" style={{ padding: '2px 8px', fontSize: 11 }}
+                onClick={() => { setTranscript(''); setFileName(''); }}>Clear</button>
+            )}
           </div>
         </div>
 
         {error && <div style={{ padding: 12, background: 'var(--red-bg)', borderRadius: 8, color: 'var(--red)', fontSize: 13, marginBottom: 16 }}>{error}</div>}
 
         <button className="btn btn-primary" onClick={handleAnalyze} disabled={loading} style={{ width: '100%', justifyContent: 'center', padding: 14 }}>
-          {loading ? <><span className="spinner" style={{ width: 18, height: 18 }}/> Analyzing with AI...</> : '⚡ Analyze Transcript'}
+          {loading ? (
+            <><span className="spinner" style={{ width: 18, height: 18 }}/>
+              {transcript.length > 12000 ? 'Analyzing in chunks (this may take a minute)...' : 'Analyzing with AI...'}</>
+          ) : '⚡ Analyze Transcript'}
         </button>
       </div>
 
