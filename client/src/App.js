@@ -358,6 +358,10 @@ export default function App() {
   const [objectionsOpen, setObjectionsOpen] = useState(false);
   const [opportunitiesOpen, setOpportunitiesOpen] = useState(false);
   const [themesExpanded, setThemesExpanded] = useState(false);
+  const [aggObjectionsOpen, setAggObjectionsOpen] = useState(false);
+  const [aggOpportunitiesOpen, setAggOpportunitiesOpen] = useState(false);
+  const [aggThemesExpanded, setAggThemesExpanded] = useState(false);
+  const [aggCollateralOpen, setAggCollateralOpen] = useState(false);
 
   useEffect(() => { injectStyles(); }, []);
 
@@ -918,61 +922,130 @@ export default function App() {
         </div>
 
         <div className="grid-2">
-          {/* Objections */}
-          <div className="card">
+          {/* Objections — Preview card */}
+          <div className="card" style={{ cursor: (ag.objections || []).length > 0 ? 'pointer' : 'default', transition: 'border-color 0.2s', overflow: 'hidden' }}
+            onClick={() => (ag.objections || []).length > 0 && setAggObjectionsOpen(true)}
+            onMouseEnter={e => { if ((ag.objections || []).length > 0) e.currentTarget.style.borderColor = 'var(--red)'; }}
+            onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border)'}>
             <div className="card-header">
               <span className="card-title" style={{ color: 'var(--red)' }}>Top Objections (by frequency × severity)</span>
+              {(ag.objections || []).length > 0 && <span style={{ fontSize: 12, color: 'var(--text3)' }}>Click to expand →</span>}
             </div>
-            <BarChart
-              items={(ag.objections || []).map(o => ({ label: o.category, value: o.count }))}
-              maxVal={maxObj}
-              color="var(--red)"
-            />
-            {(ag.objections || []).map((o, i) => (
-              <details key={i} style={{ marginTop: 8 }}>
-                <summary style={{ cursor: 'pointer', fontSize: 13, color: 'var(--text2)', padding: '4px 0' }}>
-                  {o.category} — avg severity: {o.avg_severity}/3
-                </summary>
-                <div style={{ padding: '8px 16px', fontSize: 12, color: 'var(--text3)' }}>
-                  {o.top_details.map((d, j) => <div key={j} style={{ marginBottom: 4 }}>• {d}</div>)}
-                  {o.top_responses.length > 0 && (
-                    <div style={{ marginTop: 8, padding: 8, background: 'var(--green-bg)', borderRadius: 6 }}>
-                      <strong style={{ color: 'var(--green)' }}>Top counters:</strong>
-                      {o.top_responses.map((r, j) => <div key={j} style={{ marginTop: 4, color: 'var(--green)' }}>→ {r}</div>)}
-                    </div>
-                  )}
-                </div>
-              </details>
-            ))}
+            {/* Show first bar + fade into second */}
+            {(ag.objections || []).length > 0 && (
+              <div style={{ position: 'relative' }}>
+                <BarChart
+                  items={(ag.objections || []).slice(0, 2).map(o => ({ label: o.category, value: o.count }))}
+                  maxVal={maxObj}
+                  color="var(--red)"
+                />
+                {(ag.objections || []).length > 1 && (
+                  <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 40, background: 'linear-gradient(transparent, var(--surface))' }} />
+                )}
+              </div>
+            )}
+            {(ag.objections || []).length === 0 && <p style={{ color: 'var(--text3)', fontSize: 13 }}>No objections yet</p>}
           </div>
 
-          {/* Opportunities */}
-          <div className="card">
+          {/* Opportunities — Preview card */}
+          <div className="card" style={{ cursor: (ag.opportunities || []).length > 0 ? 'pointer' : 'default', transition: 'border-color 0.2s', overflow: 'hidden' }}
+            onClick={() => (ag.opportunities || []).length > 0 && setAggOpportunitiesOpen(true)}
+            onMouseEnter={e => { if ((ag.opportunities || []).length > 0) e.currentTarget.style.borderColor = 'var(--green)'; }}
+            onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border)'}>
             <div className="card-header">
               <span className="card-title" style={{ color: 'var(--green)' }}>Top Opportunities (by frequency × strength)</span>
+              {(ag.opportunities || []).length > 0 && <span style={{ fontSize: 12, color: 'var(--text3)' }}>Click to expand →</span>}
             </div>
-            <BarChart
-              items={(ag.opportunities || []).map(o => ({ label: o.category, value: o.count }))}
-              maxVal={maxOpp}
-              color="var(--green)"
-            />
-            {(ag.opportunities || []).map((o, i) => (
-              <details key={i} style={{ marginTop: 8 }}>
-                <summary style={{ cursor: 'pointer', fontSize: 13, color: 'var(--text2)', padding: '4px 0' }}>
-                  {o.category} — avg strength: {o.avg_strength}/3
-                </summary>
-                <div style={{ padding: '8px 16px', fontSize: 12, color: 'var(--text3)' }}>
-                  {o.top_details.map((d, j) => <div key={j} style={{ marginBottom: 4 }}>• {d}</div>)}
-                  {o.relevant_modules.length > 0 && (
-                    <div style={{ marginTop: 6 }}>
-                      Relevant modules: {o.relevant_modules.map((m, j) => <span key={j} className="tag tag-accent" style={{ marginRight: 4 }}>{m}</span>)}
-                    </div>
-                  )}
-                </div>
-              </details>
-            ))}
+            {(ag.opportunities || []).length > 0 && (
+              <div style={{ position: 'relative' }}>
+                <BarChart
+                  items={(ag.opportunities || []).slice(0, 2).map(o => ({ label: o.category, value: o.count }))}
+                  maxVal={maxOpp}
+                  color="var(--green)"
+                />
+                {(ag.opportunities || []).length > 1 && (
+                  <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 40, background: 'linear-gradient(transparent, var(--surface))' }} />
+                )}
+              </div>
+            )}
+            {(ag.opportunities || []).length === 0 && <p style={{ color: 'var(--text3)', fontSize: 13 }}>No opportunities yet</p>}
           </div>
         </div>
+
+        {/* Objections Popup */}
+        {aggObjectionsOpen && (
+          <div className="modal-overlay" onClick={() => setAggObjectionsOpen(false)}>
+            <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 750 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <span style={{ color: 'var(--red)', fontSize: 20 }}>◼</span>
+                  <span style={{ fontSize: 18, fontWeight: 700 }}>Top Objections ({(ag.objections || []).length} categories)</span>
+                </div>
+                <button className="btn btn-ghost btn-sm" onClick={() => setAggObjectionsOpen(false)}>✕ Close</button>
+              </div>
+              <BarChart
+                items={(ag.objections || []).map(o => ({ label: o.category, value: o.count }))}
+                maxVal={maxObj}
+                color="var(--red)"
+              />
+              <div style={{ marginTop: 16 }}>
+                {(ag.objections || []).map((o, i) => (
+                  <details key={i} style={{ marginBottom: 8 }}>
+                    <summary style={{ cursor: 'pointer', fontSize: 14, fontWeight: 500, color: 'var(--text)', padding: '10px 0', borderBottom: '1px solid var(--border)' }}>
+                      {o.category} — <span style={{ color: 'var(--text3)', fontWeight: 400 }}>avg severity: {o.avg_severity}/3 · {o.count} occurrence{o.count !== 1 ? 's' : ''}</span>
+                    </summary>
+                    <div style={{ padding: '12px 16px', fontSize: 13, color: 'var(--text2)' }}>
+                      {o.top_details.map((d, j) => <div key={j} style={{ marginBottom: 6 }}>• {d}</div>)}
+                      {o.top_responses.length > 0 && (
+                        <div style={{ marginTop: 10, padding: 10, background: 'var(--green-bg)', borderRadius: 8 }}>
+                          <strong style={{ color: 'var(--green)', fontSize: 12 }}>Suggested counters:</strong>
+                          {o.top_responses.map((r, j) => <div key={j} style={{ marginTop: 4, color: 'var(--green)', fontSize: 13 }}>→ {r}</div>)}
+                        </div>
+                      )}
+                    </div>
+                  </details>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Opportunities Popup */}
+        {aggOpportunitiesOpen && (
+          <div className="modal-overlay" onClick={() => setAggOpportunitiesOpen(false)}>
+            <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 750 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <span style={{ color: 'var(--green)', fontSize: 20 }}>◼</span>
+                  <span style={{ fontSize: 18, fontWeight: 700 }}>Top Opportunities ({(ag.opportunities || []).length} categories)</span>
+                </div>
+                <button className="btn btn-ghost btn-sm" onClick={() => setAggOpportunitiesOpen(false)}>✕ Close</button>
+              </div>
+              <BarChart
+                items={(ag.opportunities || []).map(o => ({ label: o.category, value: o.count }))}
+                maxVal={maxOpp}
+                color="var(--green)"
+              />
+              <div style={{ marginTop: 16 }}>
+                {(ag.opportunities || []).map((o, i) => (
+                  <details key={i} style={{ marginBottom: 8 }}>
+                    <summary style={{ cursor: 'pointer', fontSize: 14, fontWeight: 500, color: 'var(--text)', padding: '10px 0', borderBottom: '1px solid var(--border)' }}>
+                      {o.category} — <span style={{ color: 'var(--text3)', fontWeight: 400 }}>avg strength: {o.avg_strength}/3 · {o.count} occurrence{o.count !== 1 ? 's' : ''}</span>
+                    </summary>
+                    <div style={{ padding: '12px 16px', fontSize: 13, color: 'var(--text2)' }}>
+                      {o.top_details.map((d, j) => <div key={j} style={{ marginBottom: 6 }}>• {d}</div>)}
+                      {o.relevant_modules.length > 0 && (
+                        <div style={{ marginTop: 8 }}>
+                          Relevant modules: {o.relevant_modules.map((m, j) => <span key={j} className="tag tag-accent" style={{ marginRight: 4 }}>{m}</span>)}
+                        </div>
+                      )}
+                    </div>
+                  </details>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Module Popularity */}
         {(ag.modules || []).length > 0 && (
@@ -986,11 +1059,40 @@ export default function App() {
           </div>
         )}
 
-        {/* Messaging Themes */}
+        {/* Messaging Themes — Expandable inline */}
         {(ag.messaging_themes || []).length > 0 && (
           <div className="card" style={{ marginTop: 20 }}>
-            <div className="card-header"><span className="card-title">Recurring Messaging Themes</span></div>
-            {ag.messaging_themes.slice(0, 10).map((t, i) => (
+            <div className="card-header" style={{ cursor: 'pointer' }} onClick={() => setAggThemesExpanded(!aggThemesExpanded)}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <span className="card-title">Recurring Messaging Themes</span>
+                <span className="tag tag-accent" style={{ fontSize: 11 }}>{(ag.messaging_themes || []).length}</span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                {!aggThemesExpanded && <span style={{ fontSize: 12, color: 'var(--text3)' }}>Click to expand</span>}
+                <span style={{ fontSize: 18, color: 'var(--text3)', transition: 'transform 0.2s', transform: aggThemesExpanded ? 'rotate(180deg)' : 'rotate(0deg)' }}>▾</span>
+              </div>
+            </div>
+            {/* Collapsed: show top 1 with fade */}
+            {!aggThemesExpanded && (
+              <div style={{ position: 'relative' }}>
+                {ag.messaging_themes.slice(0, 1).map((t, i) => (
+                  <div key={i} style={{ padding: 12, background: 'var(--surface2)', borderRadius: 8, borderLeft: '3px solid var(--accent)' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div style={{ fontSize: 14, fontWeight: 600 }}>{t.theme}</div>
+                      <div style={{ display: 'flex', gap: 6 }}>
+                        <span className="tag tag-accent">×{t.frequency}</span>
+                        <span className="tag tag-blue">priority: {t.avg_priority}/3</span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+                {ag.messaging_themes.length > 1 && (
+                  <div style={{ height: 30, background: 'linear-gradient(var(--surface2), var(--surface))', borderRadius: '0 0 8px 8px', marginTop: -2 }} />
+                )}
+              </div>
+            )}
+            {/* Expanded: all items */}
+            {aggThemesExpanded && ag.messaging_themes.map((t, i) => (
               <div key={i} style={{ padding: 14, background: 'var(--surface2)', borderRadius: 8, marginBottom: 10, borderLeft: `3px solid ${i < 3 ? 'var(--accent)' : 'var(--border)'}` }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <div style={{ fontSize: 14, fontWeight: 600 }}>{t.theme}</div>
@@ -1022,19 +1124,19 @@ export default function App() {
           </div>
         )}
 
-        {/* Top Marketing Suggestions */}
+        {/* Top Marketing Suggestions — Top 3 + popup */}
         {(ag.marketing_suggestions || []).length > 0 && (
           <div style={{ marginTop: 24 }}>
             <h3 className="section-title" style={{ fontSize: 16 }}>Priority Marketing Collateral</h3>
             <p className="section-sub">Based on recurring patterns across all conversations</p>
             <div className="grid-3">
-              {ag.marketing_suggestions.slice(0, 9).map((s, i) => (
+              {ag.marketing_suggestions.slice(0, 3).map((s, i) => (
                 <div key={i} className="suggestion-card">
                   <div className="suggestion-type">{s.type} {s.frequency > 1 && `(×${s.frequency})`}</div>
                   <div className="suggestion-title">{s.title}</div>
                   <div className="suggestion-desc">{s.description}</div>
                   <div style={{ marginTop: 8 }}>
-                    <SeverityTag level={s.priority} />
+                    <SeverityTag level={s.priority} large />
                   </div>
                   <button className="btn btn-ghost btn-sm" style={{ marginTop: 12, width: '100%', justifyContent: 'center' }}
                     onClick={() => generateCollateral(s)} disabled={collateralLoading}>
@@ -1042,6 +1144,40 @@ export default function App() {
                   </button>
                 </div>
               ))}
+            </div>
+            {ag.marketing_suggestions.length > 3 && (
+              <button className="btn btn-ghost" style={{ width: '100%', justifyContent: 'center', marginTop: 12, padding: 12 }}
+                onClick={() => setAggCollateralOpen(true)}>
+                View all {ag.marketing_suggestions.length} suggestions →
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* All Collateral Popup */}
+        {aggCollateralOpen && (
+          <div className="modal-overlay" onClick={() => setAggCollateralOpen(false)}>
+            <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 800 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+                <span style={{ fontSize: 18, fontWeight: 700 }}>All Marketing Collateral ({(ag.marketing_suggestions || []).length})</span>
+                <button className="btn btn-ghost btn-sm" onClick={() => setAggCollateralOpen(false)}>✕ Close</button>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                {(ag.marketing_suggestions || []).map((s, i) => (
+                  <div key={i} className="suggestion-card">
+                    <div className="suggestion-type">{s.type} {s.frequency > 1 && `(×${s.frequency})`}</div>
+                    <div className="suggestion-title">{s.title}</div>
+                    <div className="suggestion-desc">{s.description}</div>
+                    <div style={{ marginTop: 8 }}>
+                      <SeverityTag level={s.priority} large />
+                    </div>
+                    <button className="btn btn-ghost btn-sm" style={{ marginTop: 12, width: '100%', justifyContent: 'center' }}
+                      onClick={() => generateCollateral(s)} disabled={collateralLoading}>
+                      {collateralLoading ? 'Generating...' : '✨ Generate Content'}
+                    </button>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         )}
